@@ -1,0 +1,21 @@
+#!/usr/bin/python
+
+import urllib, sys, json
+
+u='http://api.rs.in.didww.com:6666/api/rest/system/admin_user/ssh_keys'
+
+try:
+#	if len(sys.argv) < 2:
+#		raise BaseException("missed url");
+
+	#f = urllib.urlopen(sys.argv[1])
+	f = urllib.urlopen(u)
+	
+	users = json.loads(f.read())
+	for u in users:
+		print 'environment="YETI_CMD_USER={}" {} {}'.format(u['username'],u['ssh_key'],u['username'])
+
+except BaseException as e:
+	print "error: {}".format(e)
+	
+
