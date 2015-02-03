@@ -1,0 +1,14 @@
+Source: yeticmd
+Section: utils
+Priority: optional
+Maintainer: yeti team <dev@yeti-switch.org>
+Build-Depends: debhelper (>= 9), devscripts, dh-python
+Standards-Version: 3.9.2
+Homepage: http://yeti-switch.org/
+
+Package: yeticmd
+Architecture: all
+Depends:  ${misc:Depends}, ${python:Depends}, python-yaml
+Description: cmd for YETI project
+    YETI cmd
+
