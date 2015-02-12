@@ -1,0 +1,5 @@
+nodes:
+ 10: 'http://127.0.0.1:8090'
+
+default_node: 10
+
