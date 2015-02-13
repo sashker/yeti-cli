@@ -1,0 +1,12 @@
+#!/bin/sh
+
+#DEBHELPER#
+
+if [ "$1" = "purge" ] ; then
+  # remove user/group on purge
+  deluser --quiet --remove-home console &>/dev/null || true
+  # remove config file
+  rm /etc/sems/etc/yeticmd.yaml || true
+fi
+
+exit 0

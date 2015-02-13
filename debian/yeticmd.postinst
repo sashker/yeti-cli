@@ -1,0 +1,39 @@
+#!/bin/bash
+
+
+function configure_sshd {
+cat << EOF >> /etc/ssh/sshd_config
+AuthorizedKeysCommand /usr/sbin/yeticmd-authentificator
+AuthorizedKeysCommandUser console
+PermitUserEnvironment yes
+EOF
+service ssh  restart
+}
+
+adduser \
+    --quiet \
+    --system \
+    --group \
+    --disabled-password  \
+    --gecos "yeti cli user" \
+    --shell /usr/sbin/yeticmd \
+    --home /home/console console || true
+
+case "${1}" in
+        configure)
+            chsh -s /bin/bash console
+            su -c "touch ~/.hushlogin" console
+            chsh -s /usr/sbin/yeticmd console
+            configure_sshd
+                ;;
+
+        abort-upgrade|abort-remove|abort-deconfigure)
+                ;;
+
+        *)
+                echo "postinst called with unknown argument \`${1}'" >&2
+                exit 1
+                ;;
+esac
+
+exit 0
