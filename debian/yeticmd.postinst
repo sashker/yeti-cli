@@ -24,7 +24,7 @@ case "${1}" in
             chsh -s /bin/bash console
             su -c "touch ~/.hushlogin" console
             chsh -s /usr/sbin/yeticmd console
-            configure_sshd
+#            configure_sshd
                 ;;
 
         abort-upgrade|abort-remove|abort-deconfigure)
