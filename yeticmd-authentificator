@@ -1,22 +1,36 @@
 #!/usr/bin/python
 
 import urllib
-import sys
+import yaml
 import json
+import sys
 
-u='http://localhost:6666/api/rest/system/admin_user/ssh_keys'
+CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
 
-try:
-#   if len(sys.argv) < 2:
-#       raise BaseException("missed url");
+def get_config(path):
+    try:
+        with open(path) as f:
+            cfg = yaml.load(f)
+    except IOError as e:
+        print("Can't open config file {}, {}".format(path, e))
+        sys.exit(1)
+    except ScannerError as e:
+        print("Can't parce config file {}, {}".format(path, e))
+    return cfg
 
-    #f = urllib.urlopen(sys.argv[1])
-    f = urllib.urlopen(u)
 
-    users = json.loads(f.read())
-    for u in users:
-        print 'environment="YETI_CMD_USER={}" {} {}'.format(u['username'],u['ssh_key'],u['username'])
+def main():
+    cfg = get_config(CFG_PATH)
+    u = cfg.get('authentificator_url')
+    try:
+        f = urllib.urlopen(u)
+        users = json.loads(f.read())
+        for u in users:
+            print 'environment="YETI_CMD_USER={0}" {1} {0}'.format(u['username'], u['ssh_key'])
 
-except BaseException as e:
-    print "error: {}".format(e)
+    except BaseException as e:
+        print "error: {}".format(e)
 
+
+if __name__ == '__main__':
+    main()

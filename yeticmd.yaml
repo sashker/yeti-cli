@@ -3,3 +3,4 @@ nodes:
 
 default_node: 10
 
+authentificator_url: 'http://localhost:6666/api/rest/system/admin_user/ssh_keys'
