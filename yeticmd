@@ -1,16 +1,29 @@
 #!/usr/bin/python
 
-#aptitude install python-yaml
-
 import os
 import sys
 import signal
 import xmlrpclib
 import pprint
-import ConfigParser
 import syslog
 
+import yaml
+
 from cmd import Cmd
+
+
+CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
+
+def get_config(path):
+    try:
+        with open(path) as f:
+            cfg = yaml.load(f)
+    except IOError as e:
+        print("Can't open config file {}, {}".format(path, e))
+        sys.exit(1)
+    except ScannerError as e:
+        print("Can't parce config file {}, {}".format(path, e))
+    return cfg
 
 
 def walk_over_keys(v, keys, key):
@@ -41,7 +54,6 @@ class shell(Cmd):
     user = os.getenv('YETI_CMD_USER', 'anonymous')
     prompt = user+' YETI> '
     doc_header = ''
-    cfg_path = '/etc/sems/etc/yeticmd.yaml'
     cfg = dict()
     node_id = None
 
@@ -162,8 +174,7 @@ class shell(Cmd):
         pass
 
     def read_cfg(self):
-        import yaml
-        self.cfg = yaml.load(open(self.cfg_path))
+        self.cfg = get_config(CFG_PATH)
 
     def preloop(self):
         self.read_cfg()
