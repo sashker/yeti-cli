@@ -1,6 +1,5 @@
-nodes:
- 10: 'http://127.0.0.1:8090'
-
-default_node: 10
-
-authentificator_url: 'http://localhost:6666/api/rest/system/admin_user/ssh_keys'
+---
+nodes_url: 'http://localhost:6666/api/rest/system/nodes.json'
+authentificator_url: 'http://localhost:6666/api/rest/system/admin_users.json?q[ssh_key_present]=1'
+timeout: 5
+default_node: 8
