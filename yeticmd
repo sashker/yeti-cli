@@ -13,7 +13,7 @@ import requests
 from cmd import Cmd
 
 
-CFG_PATH = './yeticmd.yaml'
+CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
 
 def get_config(path):
     try:

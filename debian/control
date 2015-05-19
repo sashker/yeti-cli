@@ -8,7 +8,7 @@ Homepage: http://yeti-switch.org/
 
 Package: yeticmd
 Architecture: all
-Depends:  ${misc:Depends}, ${python:Depends}, python-yaml
+Depends:  ${misc:Depends}, ${python:Depends}, python-yaml, python-requests
 Description: cmd for YETI project
     YETI cmd
 
