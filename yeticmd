@@ -6,6 +6,7 @@ import signal
 import xmlrpclib
 import pprint
 import syslog
+import socket
 
 import yaml
 import requests
@@ -181,7 +182,7 @@ class shell(Cmd):
         try:
             ans = requests.get(
                 self.cfg.get('nodes_url'),
-                timeout=self.cfg.get('timeout'),
+                timeout=self.cfg.get(u'timeout'),
             )
             self.nodes = ans.json()
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as err:
@@ -199,6 +200,7 @@ class shell(Cmd):
     def preloop(self):
         self.read_cfg()
         self.load_nodes()
+        socket.setdefaulttimeout(self.cfg[u'timeout'])
         if 'default_node' in self.cfg:
             self.do_use(str(self.cfg['default_node']))
         signal.signal(signal.SIGINT, self.sigint_handler)
