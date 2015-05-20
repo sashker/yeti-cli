@@ -184,7 +184,7 @@ class shell(Cmd):
                 self.cfg.get('nodes_url'),
                 timeout=self.cfg.get(u'timeout'),
             )
-            self.nodes = ans.json()
+            self.nodes = ans.json
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as err:
             print(err)
             sys.exit(-1)
