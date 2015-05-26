@@ -158,8 +158,11 @@ class shell(Cmd):
 
     def do_list(self, arg):
         'list available nodes'
+        header = "node_id  rpc_uri"
+        print(header)
+        print('-'*len(header))
         for n in self.nodes:
-            pprint.PrettyPrinter(indent=4).pprint(n)
+            print('{0:^7}  {1}'.format(n.get(u'id'), n.get(u'rpc_uri')))
 
     def do_use(self, arg):
         'use <node_id> - set current node'
