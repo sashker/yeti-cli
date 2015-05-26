@@ -17,6 +17,7 @@ from cmd import Cmd
 CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
 
 def get_config(path):
+    path = os.getenv('YETI_CMD_CFG_PATH', path)
     try:
         with open(path) as f:
             cfg = yaml.load(f)
