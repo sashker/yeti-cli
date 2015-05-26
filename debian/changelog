@@ -1,3 +1,16 @@
+yeticmd (0.1.2-2) wheezy; urgency=low
+
+  * fix work with python-requests from wheezy repo
+
+ -- dev <dev@yeti-switch.org>  Tue, 20 May 2015 13:25:42 +0200
+
+yeticmd (0.1.2-1) wheezy; urgency=low
+
+  * add timeout support for connections
+  * get node list from api
+
+ -- dev <dev@yeti-switch.org>  Tue, 03 Feb 2015 20:59:42 +0200
+
 yeticmd (0.1.1-1) wheezy; urgency=low
 
   * add ability to read config from yeticmd.yaml for yeticmd-authentificator
