@@ -27,7 +27,10 @@ def main():
     timeout = cfg.get('timeout')
     try:
         ans = requests.get(u, timeout=timeout)
-        users = ans.json
+        if int(requests.__version__.split('.')[0]) < 1:
+            users = ans.json
+        else:
+            users = ans.json()
         for u in users:
             print 'environment="YETI_CMD_USER={0}" {1} {0}'.format(u['username'], u['ssh_key'])
 
