@@ -49,8 +49,45 @@ def walk_over_keys(v, keys, key):
             return
         v = v[k]
         if i+1 == len(keys):
-            pprint.PrettyPrinter(indent=4).pprint(v)
+            gprint(v)
     return
+
+
+def formated_print(data):
+    header = ''
+    result = ''
+    for k in data:
+        s_v = str(data.get(k))
+        s_k = str(k)
+        l = len(s_v) if len(s_v) > len(s_k) else len(s_k)
+        l += 2
+        tl = '{{:^{}}}'.format(l)
+        header = tl.format(s_k) + '|' + header
+        result = tl.format(s_v) + '|' + result
+    print(header)
+    print('-'*len(result))
+    print(result)
+
+
+def can_formating(data):
+    if not data:
+        return False
+    if isinstance(data, dict):
+        for k,v in data.items():
+            if isinstance(k, list) or isinstance(k,dict) or isinstance(v, list) or isinstance(v,dict):
+                return False
+    elif isinstance(data, list):
+        for v in data:
+            if isinstance(v, list) or isinstance(v,dict):
+                return False
+    return True
+
+
+def gprint(data, state=True):
+    if state and can_formating(data):
+        formated_print(data)
+    else:
+        pprint.PrettyPrinter(indent=4).pprint(data)
 
 
 class shell(Cmd):
@@ -60,6 +97,7 @@ class shell(Cmd):
     cfg = dict()
     c_node = None
     nodes = []
+    formatting = True
 
     def sigint_handler(self, signum, frame):
         self.stdout.write('\n'+self.prompt)
@@ -106,7 +144,7 @@ class shell(Cmd):
                 else:
                     if keys is not None:
                         data = data[1]
-                    pprint.PrettyPrinter(indent=4).pprint(data)
+                    gprint(data, self.formatting)
         except BaseException as err:
             print err
 
@@ -178,6 +216,20 @@ class shell(Cmd):
         except BaseException as err:
             print err
         pass
+
+    def do_formating(self, arg):
+        if not arg:
+            print(self.formatting)
+        elif len(arg.split()) == 1 and arg in ['enable', 'disable']:
+            print("{0} formating".format(arg))
+            self.formatting = True if arg == 'enable' else False
+
+#    def complete_formating(self, text, line, begidx, endidx):
+#        if len(line.split()) > 2:
+#            print("\n You can apply only enable|disable args\n")
+#        print(text)
+#        return [a for a in ['enable', 'disable'] if a.startswith(text)]
+# print(text, line, begidx, endidx)
 
     def read_cfg(self):
         self.cfg = get_config(CFG_PATH)
