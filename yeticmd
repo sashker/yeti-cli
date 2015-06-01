@@ -218,18 +218,19 @@ class shell(Cmd):
         pass
 
     def do_formating(self, arg):
+        "formating [enable|disable]"
         if not arg:
             print(self.formatting)
         elif len(arg.split()) == 1 and arg in ['enable', 'disable']:
             print("{0} formating".format(arg))
             self.formatting = True if arg == 'enable' else False
 
-#    def complete_formating(self, text, line, begidx, endidx):
-#        if len(line.split()) > 2:
-#            print("\n You can apply only enable|disable args\n")
-#        print(text)
-#        return [a for a in ['enable', 'disable'] if a.startswith(text)]
-# print(text, line, begidx, endidx)
+    def complete_formating(self, text, line, begidx, endidx):
+        #print(text, line, begidx, endidx)
+        if len(line.split()) > 2:
+            print("\n You can apply only enable|disable args\n")
+            return []
+        return [a for a in ['enable', 'disable'] if a.startswith(text)]
 
     def read_cfg(self):
         self.cfg = get_config(CFG_PATH)
