@@ -56,7 +56,7 @@ def walk_over_keys(v, keys, key):
 def make_strings(data):
     h = []
     d = []
-    for k in data:
+    for k in sorted(data):
         h.append(str(k))
         d.append(str(data[k]))
     return [h, d]
@@ -75,8 +75,6 @@ def make_template(data):
 
 
 def formated_print(data):
-    header = ''
-    result = ''
     if not data:
         print('No data to print')
     if isinstance(data, dict):
