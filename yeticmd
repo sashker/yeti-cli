@@ -110,6 +110,9 @@ def can_formating(data):
                 return False
             elif isinstance(v,dict) and not can_formating(v):
                 return False
+    elif isinstance(data, (int, long, basestring)):
+        return False
+
     return True
 
 
