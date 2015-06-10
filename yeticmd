@@ -238,17 +238,20 @@ class shell(Cmd):
         for n in self.nodes:
             print('{0:^7}  {1}'.format(n.get(u'id'), n.get(u'rpc_uri')))
 
+    def use_node(self,node_id):
+        if not node_id:
+            raise BaseException('cmd requires node_id')
+        if int(node_id) not in (n.get(u'id') for n in self.nodes):
+            raise BaseException('invalid node id. use list to see available')
+        prev_node_id = self.c_node.get(u'id') if self.c_node else 'empty'
+        self.switch_to_node(int(node_id))
+        self.prompt = "{}@YETI:{}> ".format(self.user, self.c_node.get(u'id'))
+        print "node changed from {} to {}".format(prev_node_id, self.c_node.get(u'id'))
+
     def do_use(self, arg):
         'use <node_id> - set current node'
         try:
-            if not len(arg):
-                raise BaseException('cmd requires node_id')
-            if int(arg) not in (n.get(u'id') for n in self.nodes):
-                raise BaseException('invalid node id. use list to see available')
-            prev_node_id = self.c_node.get(u'id') if self.c_node else 'empty'
-            self.switch_to_node(int(arg))
-            self.prompt = "{}@YETI:{}> ".format(self.user, self.c_node.get(u'id'))
-            print "node changed from {} to {}".format(prev_node_id, self.c_node.get(u'id'))
+            self.use_node(arg)
         except BaseException as err:
             print err
         pass
@@ -297,8 +300,22 @@ class shell(Cmd):
         self.read_cfg()
         self.load_nodes()
         socket.setdefaulttimeout(self.cfg[u'timeout'])
+
         if 'default_node' in self.cfg:
-            self.do_use(str(self.cfg['default_node']))
+            default_node = str(self.cfg['default_node'])
+            try:
+                self.use_node(default_node)
+            except BaseException as e:
+                print "switch to default node '{}' failed with error: {}".format(default_node,e)
+                if len(self.nodes):
+                    print "failover to the first node from list"
+                    self.do_use(str(self.nodes[0].get(u'id')))
+        else:
+            print "no default node configured"
+            if len(self.nodes):
+	        print "use the first node from list"
+	        self.do_use(str(self.nodes[0].get(u'id')))
+
         signal.signal(signal.SIGINT, self.sigint_handler)
         self.ip = os.getenv('SSH_CLIENT', 'Local')
 
