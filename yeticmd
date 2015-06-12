@@ -53,6 +53,36 @@ def walk_over_keys(v, keys, key):
     return
 
 
+def get_keys(v, path, keys):
+    if path:
+        if path[0] == '*':
+            if not isinstance(v, list):
+                raise BaseException("invalid keyword '*' for non list type {}".format(type(v)))
+            result = []
+            for e in v:
+                r = get_keys(e, path[1:], keys)
+                result.append(r)
+        else:
+            result = get_keys(v[path[0]], path[1:], keys)
+    else:
+        result = {}
+        for k in keys:
+            if v.get(k) is not None:
+                result[k] = v[k]
+    return result
+
+
+def filter_data(v, fline):
+    path = fline.split(',')[0].split('.')[:-1]
+    first_key = fline.split(',')[0].split('.')[-1]
+    if first_key == '*':
+        return v
+    keys = [e.strip() for e in fline.split(',') if e.strip()]
+    keys = keys[1:] + [first_key]
+    result = get_keys(v, path, sorted(keys))
+    return result
+
+
 def make_strings(data):
     h = []
     d = []
@@ -171,14 +201,8 @@ class shell(Cmd):
                 if len(cc) > 1:
                     print "{}...".format(args[0])
                 data = self.rpc_do(cmds)
-
-                if keys is not None and len(keys) > 0:
-                    chunks = [k.strip() for k in keys.split(',')]
-                    for k in chunks:
-                        if len(chunks) > 1:
-                            print "{}:".format(k)
-                        kk = k.split('.')
-                        walk_over_keys(data, kk[:], kk)
+                if keys:
+                    data = filter_data(data, keys)
                 else:
                     if keys is not None:
                         data = data[1]
