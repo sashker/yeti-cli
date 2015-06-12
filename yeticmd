@@ -102,13 +102,15 @@ def can_formating(data):
         return False
     if isinstance(data, dict):
         for k,v in data.items():
-            if isinstance(k, list) or isinstance(k,dict) or isinstance(v, list) or isinstance(v,dict):
+            if isinstance(k, (list, dict)) or isinstance(v, (list, dict)):
                 return False
     elif isinstance(data, list):
         for v in data:
             if isinstance(v, list):
                 return False
             elif isinstance(v,dict) and not can_formating(v):
+                return False
+            elif isinstance(v, (int, long, basestring)):
                 return False
     elif isinstance(data, (int, long, basestring)):
         return False
@@ -180,7 +182,7 @@ class shell(Cmd):
                 else:
                     if keys is not None:
                         data = data[1]
-                    gprint(data, self.formatting)
+                self.gprint(data)
         except BaseException as err:
             print err
 
@@ -265,7 +267,6 @@ class shell(Cmd):
             self.formatting = True if arg == 'enable' else False
 
     def complete_formating(self, text, line, begidx, endidx):
-        #print(text, line, begidx, endidx)
         if len(line.split()) > 2:
             print("\n You can apply only enable|disable args\n")
             return []
@@ -313,11 +314,18 @@ class shell(Cmd):
         else:
             print "no default node configured"
             if len(self.nodes):
-	        print "use the first node from list"
-	        self.do_use(str(self.nodes[0].get(u'id')))
+                print "use the first node from list"
+                self.do_use(str(self.nodes[0].get(u'id')))
 
         signal.signal(signal.SIGINT, self.sigint_handler)
         self.ip = os.getenv('SSH_CLIENT', 'Local')
+
+    def gprint(self, data):
+        if self.formatting and can_formating(data):
+            formated_print(data)
+        else:
+            pprint.PrettyPrinter(indent=4).pprint(data)
+
 
 if __name__ == '__main__':
     try:
