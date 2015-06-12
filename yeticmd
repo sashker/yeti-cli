@@ -201,6 +201,10 @@ class shell(Cmd):
                 for e in r:
                     e.update(a_fields)
                     result.append(e)
+            else:
+                r = {'request_result': r}
+                r.update(a_fields)
+                result.append(r)
         self.switch_to_node(tmp_node_id)
         self.gprint(result)
 
