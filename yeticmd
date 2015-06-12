@@ -29,30 +29,6 @@ def get_config(path):
     return cfg
 
 
-def walk_over_keys(v, keys, key):
-    kk = key[:]
-    for i, k in enumerate(keys):
-        if k == '*':    #walk over arrays key
-            if type(v) is not list:
-                print "invalid keyword '*' for non list type {}".format(type(v))
-                return
-            else:
-                if i+1 == len(keys):
-                    print "keyword '*' must precede valid key"
-                    return
-                for j, l in enumerate(v):
-                    kk[i+1] = "{}[{}]".format(key[i+1], j)
-                    walk_over_keys(l, keys[i+1:], kk)
-                break
-        if k not in v:
-            print "invalid item '{}'".format(k)
-            return
-        v = v[k]
-        if i+1 == len(keys):
-            gprint(v)
-    return
-
-
 def get_keys(v, path, keys):
     if path:
         if path[0] == '*':
@@ -117,9 +93,9 @@ def formated_print(data):
                 result.append(d[1])
             else:
                 result = d
-
     tl = make_template(result)
     header = tl.format(*result[0])
+    print('-'*len(header))
     print(header)
     print('-'*len(header))
     for e in result[1:]:
@@ -144,15 +120,7 @@ def can_formating(data):
                 return False
     elif isinstance(data, (int, long, basestring)):
         return False
-
     return True
-
-
-def gprint(data, state=True):
-    if state and can_formating(data):
-        formated_print(data)
-    else:
-        pprint.PrettyPrinter(indent=4).pprint(data)
 
 
 class shell(Cmd):
@@ -206,12 +174,13 @@ class shell(Cmd):
                 else:
                     if keys is not None:
                         data = data[1]
-                self.gprint(data)
+                return data
         except BaseException as err:
             print err
 
     def default(self, line):
-        self.rpc_command(line)
+        result = self.rpc_command(line)
+        self.gprint(result)
 
     def do_EOF(self, line):
         print ''
@@ -220,11 +189,20 @@ class shell(Cmd):
     def do_all(self, line):
         'apply rpc_cmd for all nodes from config'
         tmp_node_id = self.c_node.get(u'id')
+        result = []
         for i in (n.get(u'id') for n in self.nodes):
-            print "Node {}: ".format(i),
             self.switch_to_node(i)
-            self.rpc_command(line)
+            r = self.rpc_command(line)
+            a_fields = {' node_id': self.c_node.get(u'id')}
+            if isinstance(r, dict):
+                r.update(a_fields)
+                result.append(r)
+            elif isinstance(r, list):
+                for e in r:
+                    e.update(a_fields)
+                    result.append(e)
         self.switch_to_node(tmp_node_id)
+        self.gprint(result)
 
     def complete_all(self, text, line, begidx, endidx):
         return self.completedefault(text, ' '.join(line.split()[1:]), begidx, endidx)
