@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import os
 import sys
@@ -6,8 +6,10 @@ import signal
 import xmlrpclib
 import pprint
 import syslog
+import socket
 
 import yaml
+import requests
 
 from cmd import Cmd
 
@@ -15,6 +17,7 @@ from cmd import Cmd
 CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
 
 def get_config(path):
+    path = os.getenv('YETI_CMD_CFG_PATH', path)
     try:
         with open(path) as f:
             cfg = yaml.load(f)
@@ -46,25 +49,102 @@ def walk_over_keys(v, keys, key):
             return
         v = v[k]
         if i+1 == len(keys):
-            pprint.PrettyPrinter(indent=4).pprint(v)
+            gprint(v)
     return
 
 
+def make_strings(data):
+    h = []
+    d = []
+    for k in sorted(data):
+        h.append(str(k))
+        d.append(str(data[k]))
+    return [h, d]
+
+
+def make_template(data):
+    l = [None] * len(data[0])
+    for e in data:
+        for n,i in enumerate(l):
+            if len(e[n]) > l[n]:
+                l[n] = len(e[n])
+    tl = ''
+    for i in l:
+        tl = tl + '{{:^{}}}'.format(i+2) + '|'
+    return tl
+
+
+def formated_print(data):
+    if not data:
+        print('No data to print')
+    if isinstance(data, dict):
+        result = make_strings(data)
+    else:
+        result = []
+        for e in data:
+            d = make_strings(e)
+            if result:
+                result.append(d[1])
+            else:
+                result = d
+
+    tl = make_template(result)
+    header = tl.format(*result[0])
+    print(header)
+    print('-'*len(header))
+    for e in result[1:]:
+        s = tl.format(*e)
+        print(s)
+
+
+def can_formating(data):
+    if not data:
+        return False
+    if isinstance(data, dict):
+        for k,v in data.items():
+            if isinstance(k, (list, dict)) or isinstance(v, (list, dict)):
+                return False
+    elif isinstance(data, list):
+        for v in data:
+            if isinstance(v, list):
+                return False
+            elif isinstance(v,dict) and not can_formating(v):
+                return False
+            elif isinstance(v, (int, long, basestring)):
+                return False
+    elif isinstance(data, (int, long, basestring)):
+        return False
+
+    return True
+
+
+def gprint(data, state=True):
+    if state and can_formating(data):
+        formated_print(data)
+    else:
+        pprint.PrettyPrinter(indent=4).pprint(data)
+
+
 class shell(Cmd):
-    user = os.getenv('YETI_CMD_USER', 'anonymous')
-    prompt = user+' YETI> '
-    doc_header = ''
-    cfg = dict()
-    node_id = None
+
+    def __init__(self):
+        self.user = os.getenv('YETI_CMD_USER', 'anonymous')
+        self.prompt = self.user+' YETI> '
+        self.doc_header = ''
+        self.cfg = dict()
+        self.c_node = None
+        self.nodes = []
+        self.formatting = True
+        Cmd.__init__(self)
 
     def sigint_handler(self, signum, frame):
         self.stdout.write('\n'+self.prompt)
         self.stdout.flush()
 
     def rpc_do(self, args):
-        if self.node_id is None:
+        if self.c_node.get(u'id') is None:
             return None
-        addr = self.cfg['nodes'][self.node_id]
+        addr = self.c_node[u'rpc_uri']
         s = xmlrpclib.ServerProxy(addr)
         data = s.di('yeti', *args)
         return data
@@ -79,8 +159,8 @@ class shell(Cmd):
 
     def rpc_command(self, line):
         try:
-            syslog.syslog('{}: {}->{}'.format(self.ip, self.node_id, line))
-            if self.node_id is None:
+            syslog.syslog('{}: {}->{}'.format(self.ip, self.c_node.get(u'id'), line))
+            if self.c_node.get(u'id') is None:
                 raise BaseException("you should choose node first")
             cc = [c.strip() for c in line.split('&')]
             for c in cc:
@@ -102,7 +182,7 @@ class shell(Cmd):
                 else:
                     if keys is not None:
                         data = data[1]
-                    pprint.PrettyPrinter(indent=4).pprint(data)
+                self.gprint(data)
         except BaseException as err:
             print err
 
@@ -115,12 +195,12 @@ class shell(Cmd):
 
     def do_all(self, line):
         'apply rpc_cmd for all nodes from config'
-        tmp_node_id = self.node_id
-        for n in self.cfg['nodes']:
-            print "Node {}: ".format(n),
-            self.node_id = n
+        tmp_node_id = self.c_node.get(u'id')
+        for i in (n.get(u'id') for n in self.nodes):
+            print "Node {}: ".format(i),
+            self.switch_to_node(i)
             self.rpc_command(line)
-        self.node_id = tmp_node_id
+        self.switch_to_node(tmp_node_id)
 
     def complete_all(self, text, line, begidx, endidx):
         return self.completedefault(text, ' '.join(line.split()[1:]), begidx, endidx)
@@ -128,12 +208,12 @@ class shell(Cmd):
     def completenames(self, text, *ignored):
         dotext = 'do_'+text
         r = [a[3:] for a in self.get_names() if a.startswith(dotext)]
-        if self.node_id is None:
+        if self.c_node.get(u'id') is None:
             return r
         return r+[a for a in self.rpc_complete([]) if a.startswith(text)]
 
     def completedefault(self, text, line, begidx, endidx):
-        if self.node_id is None:
+        if self.c_node.get(u'id') is None:
             return []
         q = line.split()
         if len(q) and q[0] in [a[3:] for a in self.get_names()]:
@@ -154,34 +234,98 @@ class shell(Cmd):
 
     def do_list(self, arg):
         'list available nodes'
-        for (n, a) in self.cfg['nodes'].items():
-            print "{}{}\t{}".format("*" if n == self.node_id else '', n, a)
-        pass
+        header = "node_id  rpc_uri"
+        print(header)
+        print('-'*len(header))
+        for n in self.nodes:
+            print('{0:^7}  {1}'.format(n.get(u'id'), n.get(u'rpc_uri')))
+
+    def use_node(self,node_id):
+        if not node_id:
+            raise BaseException('cmd requires node_id')
+        if int(node_id) not in (n.get(u'id') for n in self.nodes):
+            raise BaseException('invalid node id. use list to see available')
+        prev_node_id = self.c_node.get(u'id') if self.c_node else 'empty'
+        self.switch_to_node(int(node_id))
+        self.prompt = "{}@YETI:{}> ".format(self.user, self.c_node.get(u'id'))
+        print "node changed from {} to {}".format(prev_node_id, self.c_node.get(u'id'))
 
     def do_use(self, arg):
         'use <node_id> - set current node'
         try:
-            if not len(arg):
-                raise BaseException('cmd requires node_id')
-            if int(arg) not in self.cfg['nodes']:
-                raise BaseException('invalid node id. use list to see available')
-            prev_node_id = self.node_id
-            self.node_id = int(arg)
-            self.prompt = "{}@YETI:{}> ".format(self.user, self.node_id)
-            print "node changed from {} to {}".format(prev_node_id, self.node_id)
+            self.use_node(arg)
         except BaseException as err:
             print err
         pass
 
+    def do_formating(self, arg):
+        "formating [enable|disable]"
+        if not arg:
+            print(self.formatting)
+        elif len(arg.split()) == 1 and arg in ['enable', 'disable']:
+            print("{0} formating".format(arg))
+            self.formatting = True if arg == 'enable' else False
+
+    def complete_formating(self, text, line, begidx, endidx):
+        if len(line.split()) > 2:
+            print("\n You can apply only enable|disable args\n")
+            return []
+        return [a for a in ['enable', 'disable'] if a.startswith(text)]
+
     def read_cfg(self):
         self.cfg = get_config(CFG_PATH)
 
+    def load_nodes(self):
+        try:
+            ans = requests.get(
+                self.cfg.get('nodes_url'),
+                timeout=self.cfg.get(u'timeout'),
+            )
+            if int(requests.__version__.split('.')[0]) < 1:
+                self.nodes = ans.json
+            else:
+                self.nodes = ans.json()
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as err:
+            print(err)
+            sys.exit(-1)
+
+    def switch_to_node(self, arg):
+        for n in self.nodes:
+            if n[u'id'] == arg:
+                self.c_node = n
+                break
+        else:
+            raise BaseException("can't switch to node {}".format(arg))
+
     def preloop(self):
         self.read_cfg()
+        self.load_nodes()
+        socket.setdefaulttimeout(self.cfg[u'timeout'])
+
         if 'default_node' in self.cfg:
-            self.do_use(str(self.cfg['default_node']))
+            default_node = str(self.cfg['default_node'])
+            try:
+                self.use_node(default_node)
+            except BaseException as e:
+                print "switch to default node '{}' failed with error: {}".format(default_node,e)
+                if len(self.nodes):
+                    print "failover to the first node from list"
+                    self.do_use(str(self.nodes[0].get(u'id')))
+        else:
+            print "no default node configured"
+            if len(self.nodes):
+                print "use the first node from list"
+                self.do_use(str(self.nodes[0].get(u'id')))
+
         signal.signal(signal.SIGINT, self.sigint_handler)
         self.ip = os.getenv('SSH_CLIENT', 'Local')
+
+    def gprint(self, data):
+        if self.formatting and can_formating(data):
+            formated_print(data)
+        else:
+            pprint.PrettyPrinter(indent=4).pprint(data)
+
 
 if __name__ == '__main__':
     try:

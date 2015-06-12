@@ -1,13 +1,15 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
-import urllib
-import yaml
-import json
 import sys
+import os
+
+import yaml
+import requests
 
 CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
 
 def get_config(path):
+    path = os.getenv('YETI_CMD_CFG_PATH', path)
     try:
         with open(path) as f:
             cfg = yaml.load(f)
@@ -22,14 +24,20 @@ def get_config(path):
 def main():
     cfg = get_config(CFG_PATH)
     u = cfg.get('authentificator_url')
+    timeout = cfg.get('timeout')
     try:
-        f = urllib.urlopen(u)
-        users = json.loads(f.read())
+        ans = requests.get(u, timeout=timeout)
+        if int(requests.__version__.split('.')[0]) < 1:
+            users = ans.json
+        else:
+            users = ans.json()
         for u in users:
             print 'environment="YETI_CMD_USER={0}" {1} {0}'.format(u['username'], u['ssh_key'])
 
-    except BaseException as e:
-        print "error: {}".format(e)
+    except BaseException as err:
+        print "error: {}".format(err)
+    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as err:
+        print "error: {}".format(err)
 
 
 if __name__ == '__main__':

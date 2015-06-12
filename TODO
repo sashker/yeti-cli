@@ -1,1 +1,3 @@
     Create python yeti lib
+    Use logger module instead syslog for logging
+    
