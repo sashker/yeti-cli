@@ -108,15 +108,18 @@ def can_formating(data):
         return False
     if isinstance(data, dict):
         for k,v in data.items():
-            if isinstance(k, (list, dict)) or isinstance(v, (list, dict)):
+            if isinstance(v, (list, dict)):
                 return False
     elif isinstance(data, list):
+        v_len = len(data[0])
         for v in data:
             if isinstance(v, list):
                 return False
             elif isinstance(v,dict) and not can_formating(v):
                 return False
             elif isinstance(v, (int, long, basestring)):
+                return False
+            elif v_len != len(v):
                 return False
     elif isinstance(data, (int, long, basestring)):
         return False
@@ -193,6 +196,9 @@ class shell(Cmd):
         for i in (n.get(u'id') for n in self.nodes):
             self.switch_to_node(i)
             r = self.rpc_command(line)
+            if r is None:
+                print("There's no data from node {}".format(i))
+                continue
             a_fields = {' node_id': self.c_node.get(u'id')}
             if isinstance(r, dict):
                 r.update(a_fields)
