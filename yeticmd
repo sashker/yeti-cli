@@ -259,7 +259,7 @@ class shell(Cmd):
             raise BaseException('invalid node id. use list to see available')
         prev_node_id = self.c_node.get(u'id') if self.c_node else 'empty'
         self.switch_to_node(int(node_id))
-        self.prompt = "\x1b[31m{}@YETI:{}> \x1b[0m".format(self.user, self.c_node.get(u'id'))
+        self.prompt = "\x1b[31m{}@YETI:{}> \x1b[32m".format(self.user, self.c_node.get(u'id'))
         print "node changed from {} to {}".format(prev_node_id, self.c_node.get(u'id'))
 
     def do_use(self, arg):
@@ -333,6 +333,7 @@ class shell(Cmd):
         self.ip = os.getenv('SSH_CLIENT', 'Local')
 
     def gprint(self, data):
+        print '\33[0m',
         if self.formatting and can_formating(data):
             formated_print(data)
         else:
