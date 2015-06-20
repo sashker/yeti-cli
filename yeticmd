@@ -75,7 +75,7 @@ def make_template(data):
         for n,i in enumerate(l):
             if len(e[n]) > l[n]:
                 l[n] = len(e[n])
-    tl = ''
+    tl = '|'
     for i in l:
         tl = tl + '{{:^{}}}'.format(i+2) + '|'
     return tl
@@ -102,6 +102,9 @@ def formated_print(data):
     for e in result[1:]:
         s = tl.format(*e)
         print(s)
+    tl_total = '{} record' if (len(result) - 1)  == 1 else '{} records'
+    print('-'*len(header))
+    print(tl_total.format(len(result)-1))
 
 
 def can_formating(data):
