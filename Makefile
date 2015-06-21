@@ -1,7 +1,3 @@
-pkg_name = yeti-web
-user = yeti-web
-app_dir = /home/$(user)
-
 clean:
 	make -C debian clean
 

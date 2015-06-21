@@ -6,7 +6,7 @@ import os
 import yaml
 import requests
 
-CFG_PATH = '/etc/sems/etc/yeticmd.yaml'
+CFG_PATH = '/etc/yeti/yeti-cli.yml'
 
 def get_config(path):
     path = os.getenv('YETI_CMD_CFG_PATH', path)

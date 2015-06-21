@@ -3,7 +3,7 @@
 
 function configure_sshd {
 cat << EOF >> /etc/ssh/sshd_config
-AuthorizedKeysCommand /usr/sbin/yeticmd-authentificator
+AuthorizedKeysCommand /usr/sbin/yeti-cli-authentificator
 AuthorizedKeysCommandUser console
 PermitUserEnvironment yes
 EOF
@@ -16,14 +16,14 @@ adduser \
     --group \
     --disabled-password  \
     --gecos "yeti cli user" \
-    --shell /usr/sbin/yeticmd \
+    --shell /usr/sbin/yeti-cli \
     --home /home/console console || true
 
 case "${1}" in
         configure)
             chsh -s /bin/bash console
             su -c "touch ~/.hushlogin" console
-            chsh -s /usr/sbin/yeticmd console
+            chsh -s /usr/sbin/yeti-cli console
 #            configure_sshd
                 ;;
 
