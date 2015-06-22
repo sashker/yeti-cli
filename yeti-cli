@@ -130,7 +130,7 @@ def can_formating(data):
     return True
 
 
-class shell(Cmd):
+class Shell(Cmd):
 
     def __init__(self):
         self.user = os.getenv('YETI_CMD_USER', 'anonymous')
@@ -348,7 +348,7 @@ class shell(Cmd):
 if __name__ == '__main__':
     try:
         syslog.syslog("Session started")
-        shell().cmdloop()
+        Shell().cmdloop()
     except IOError as e:
         print(e)
     except KeyboardInterrupt as e:
