@@ -24,7 +24,7 @@ case "${1}" in
             chsh -s /bin/bash console
             su -c "touch ~/.hushlogin" console
             chsh -s /usr/sbin/yeti-cli console
-            if [ ! -d "/var/log/yeti" ]
+            if [ ! -d "/var/log/yeti" ]; then
                 mkdir -p /var/log/yeti
             fi
             service rsyslog restart
