@@ -14,6 +14,7 @@ import requests
 
 from cmd import Cmd
 
+__version__ = 'REPLACE-ME'
 
 CFG_PATH = '/etc/yeti/yeti-cli.yml'
 
@@ -348,6 +349,7 @@ class Shell(Cmd):
 if __name__ == '__main__':
     try:
         syslog.syslog("Session started")
+        print('YETI-CLI version {}'.format(__version__))
         Shell().cmdloop()
     except IOError as e:
         print(e)
