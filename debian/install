@@ -1,3 +1,4 @@
 yeti-cli /usr/sbin
 yeti-cli-authentificator /usr/sbin
-yeti-cli.yml /etc/yeti
+conf/yeti-cli.yml /etc/yeti
+conf/yeti-cli.rsyslog.conf /etc/rsyslog.d/

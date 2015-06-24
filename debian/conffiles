@@ -1,1 +1,2 @@
 /etc/yeti/yeti-cli.yml
+/etc/rsyslog.d/yeti-cli.rsyslog.conf
