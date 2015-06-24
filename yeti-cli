@@ -26,8 +26,6 @@ def get_config(path):
     except IOError as e:
         print("Can't open config file {}, {}".format(path, e))
         sys.exit(1)
-    except ScannerError as e:
-        print("Can't parce config file {}, {}".format(path, e))
     return cfg
 
 
