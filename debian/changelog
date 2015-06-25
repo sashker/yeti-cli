@@ -1,3 +1,11 @@
+yeti-cli (0.1.3-9) wheezy; urgency=low
+
+    * add rsyslog config
+    * add logrotate config
+    * new version of yeti-cli
+
+ -- dev <dev@yeti-switch.org>  Thu, 25 Jun 2015 17:05:17 +0200
+
 yeti-cli (0.1.3-8) wheezy; urgency=low
 
     * rename package to yeti-cli
