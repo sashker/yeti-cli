@@ -8,6 +8,7 @@ import xmlrpclib
 import pprint
 import syslog
 import socket
+import time
 
 import yaml
 import requests
@@ -101,9 +102,9 @@ def formated_print(data):
     for e in result[1:]:
         s = tl.format(*e)
         print(s)
-    tl_total = '{} record' if (len(result) - 1)  == 1 else '{} records'
+    tl_total = '{} record.' if (len(result) - 1)  == 1 else '{} records.'
     print('-'*len(header))
-    print(tl_total.format(len(result)-1))
+    print(tl_total.format(len(result)-1), end='')
 
 
 def can_formating(data):
@@ -120,13 +121,23 @@ def can_formating(data):
                 return False
             elif isinstance(v,dict) and not can_formating(v):
                 return False
-            elif isinstance(v, (int, long, basestring)):
+            elif isinstance(v, (int, long, basestring, float)):
                 return False
             elif v_len != len(v):
                 return False
-    elif isinstance(data, (int, long, basestring)):
+    elif isinstance(data, (int, long, basestring, float)):
         return False
     return True
+
+
+def measure_duration(wrapped):
+    def _wrapped(*args, **kwargs):
+        start_time = time.time()
+        result = wrapped(*args, **kwargs)
+        duration = time.time() - start_time
+        print(' Took {0:.4f} seconds'.format(duration))
+        return result
+    return _wrapped
 
 
 class Shell(Cmd):
@@ -184,6 +195,7 @@ class Shell(Cmd):
         except BaseException as err:
             print(err)
 
+    @measure_duration
     def default(self, line):
         result = self.rpc_command(line)
         self.gprint(result)
@@ -192,6 +204,7 @@ class Shell(Cmd):
         print('')
         sys.exit()
 
+    @measure_duration
     def do_all(self, line):
         'apply rpc_cmd for all nodes from config'
         tmp_node_id = self.c_node.get(u'id')
