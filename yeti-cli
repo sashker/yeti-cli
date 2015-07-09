@@ -201,7 +201,7 @@ class Shell(Cmd):
         self.gprint(result)
 
     def do_EOF(self, line):
-        print('')
+        print('\33[0m')
         sys.exit()
 
     @measure_duration
