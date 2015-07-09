@@ -315,11 +315,10 @@ class Shell(Cmd):
                 self.cfg.get('nodes_url'),
                 timeout=self.cfg.get(u'timeout'),
             )
-            if int(requests.__version__.split('.')[0]) < 1:
-                self.nodes = ans.json
-            else:
-                self.nodes = ans.json()
-        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as err:
+            self.nodes = ans.json
+            if not isinstance(self.nodes, list):
+                raise TypeError("Can't get node list from {}".format(self.cfg.get('nodes_url')))
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, TypeError) as err:
             print(err)
             sys.exit(-1)
 
