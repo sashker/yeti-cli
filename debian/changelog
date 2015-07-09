@@ -1,3 +1,11 @@
+yeti-cli (0.1.3-10) wheezy; urgency=low
+
+    * print error and exit then load nodes from broken API url. refs #187
+    * fix issue with coloring shell after ctrl+D. refs #188
+    * add prompt_system_name parametr to config. refs #189
+
+ -- dev <dev@yeti-switch.org>  Thu, 9 Jul 2015 15:59:07 +0200
+
 yeti-cli (0.1.3-9) wheezy; urgency=low
 
     * add rsyslog config
