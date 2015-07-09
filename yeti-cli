@@ -342,12 +342,12 @@ class Shell(Cmd):
                 self.use_node(default_node)
             except BaseException as e:
                 print("switch to default node '{}' failed with error: {}".format(default_node,e))
-                if len(self.nodes):
+                if self.nodes:
                     print("failover to the first node from list")
                     self.do_use(str(self.nodes[0].get(u'id')))
         else:
             print("no default node configured")
-            if len(self.nodes):
+            if self.nodes:
                 print("use the first node from list")
                 self.do_use(str(self.nodes[0].get(u'id')))
 
