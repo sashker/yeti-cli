@@ -3,3 +3,4 @@ nodes_url: 'http://localhost:6666/api/rest/system/nodes.json'
 authentificator_url: 'http://localhost:6666/api/rest/system/admin_users.json?q[ssh_key_present]=1'
 timeout: 5
 default_node: 8
+prompt_system_name: 'YETI'
