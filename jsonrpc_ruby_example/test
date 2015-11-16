@@ -1,0 +1,1 @@
+bundle exec ./cmd.rb 10.200.0.202 7080 show system status
