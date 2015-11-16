@@ -1,0 +1,470 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+import os
+import sys
+import signal
+import xmlrpclib
+import pprint
+import syslog
+import socket
+import time
+import yaml
+import requests
+import json
+import traceback
+import math
+from urlparse import urlparse
+from cmd import Cmd
+
+__version__ = 'REPLACE-ME'
+
+CFG_PATH = '/etc/yeti/yeti-cli.yml'
+
+timeout = 60
+
+class ConnectionLost(Exception): pass
+class JsonRpcError(Exception): pass
+
+class JsonRpcProxy: # https://pypi.python.org/pypi/JsonRpc-Netstrings/0.2-dev
+    retries = 0
+    def __init__(self, addr, version="2.0"):
+        if addr.find(':'):
+            (self.host,self.port) = addr.split(':')
+            self.port = int(self.port)
+        else:
+            self.host = addr
+            self.port = 7080
+        self._version = version
+        self.connect()
+
+    def connect(self):
+        try:
+            self.retries += 1
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(timeout)
+            self.socket.connect((self.host, self.port))
+            self._incrementor = 1
+            self.retries = 0
+        except Exception as e:
+            syslog.syslog("%s" % e)
+            sleep_time = math.log(self.retries)
+            syslog.syslog("Couldn't Connect, sleeping for {} seconds and retrying... (retry #{})".format(sleep_time, self.retries))
+            time.sleep(sleep_time)
+            return self.connect()
+
+    def close(self):
+        self.socket.close()
+
+    def call_remote(self, method, params={}, retries=0):
+        if retries > 10:
+            raise JsonRpcError('Too many retries: {}'.format(retries))
+
+        self._incrementor += 1
+        jsonrpc_request = {"jsonrpc": self._version, "id": self._incrementor, "method": method, "params": params}
+        string = json.dumps(jsonrpc_request)
+        jsonrpc = str(len(string)) + ":" + string + ","
+
+        try:
+            #print 'Sending message: %s' % jsonrpc
+            self.socket.send(jsonrpc)
+            byte_length = self.socket.recv(1, socket.MSG_WAITALL)
+
+            if not byte_length:
+                raise ConnectionLost()
+
+            while byte_length[-1] != ':':
+                #print 'Receiving byte length (next char)...'
+                byte_length += self.socket.recv(1)
+
+            byte_length = int(byte_length[:-1])
+
+            #print 'Got byte length:', byte_length
+
+            response_string = ''
+            while len(response_string) < byte_length:
+                #print 'Receiving bytedata bytes...'
+                response_string += str(self.socket.recv(byte_length-len(response_string)))
+            response = json.loads(response_string)
+        # except ConnectionLost:
+        #     self.connect()
+        #     return self.call_remote(method, params)
+        except Exception, e:
+            # Get the traceback
+            traceback_string = traceback.format_exc()
+            syslog.syslog('%s'.format(traceback_string))
+            # Error. Reconnect and try again. 
+            # TODO: This should have a max retries.
+            self.connect()
+            return self.call_remote(method, params)
+
+        if not response['id'] == self._incrementor:
+            return self.call_remote(method, params, retries)
+            # raise JsonRpcError('Bad sequence ID (%s, expected %s)' % (response['id'], self._incrementor))
+
+        last_char = self.socket.recv(1)
+
+        if last_char != ',':
+            raise JsonRpcError("Expected a comma as a jsonrpc terminator!")
+
+        if 'result' in response:
+            return response['result']
+        elif 'error' in response:
+            raise JsonRpcError(response['error'])
+        else:
+            raise JsonRpcError('Unknow error. Response: {}'.format(response))
+
+def get_config(path):
+    path = os.getenv('YETI_CMD_CFG_PATH', path)
+    try:
+        with open(path) as f:
+            cfg = yaml.load(f)
+    except IOError as e:
+        print("Can't open config file {}, {}".format(path, e))
+        sys.exit(1)
+    return cfg
+
+
+def get_keys(v, path, keys):
+    if path:
+        if path[0] == '*':
+            if not isinstance(v, list):
+                raise BaseException("invalid keyword '*' for non list type {}".format(type(v)))
+            result = []
+            for e in v:
+                r = get_keys(e, path[1:], keys)
+                result.append(r)
+        else:
+            result = get_keys(v[path[0]], path[1:], keys)
+    else:
+        result = {}
+        for k in keys:
+            if v.get(k) is not None:
+                result[k] = v[k]
+    return result
+
+
+def filter_data(v, fline):
+    path = fline.split(',')[0].split('.')[:-1]
+    first_key = fline.split(',')[0].split('.')[-1]
+    if first_key == '*':
+        return v
+    keys = [e.strip() for e in fline.split(',') if e.strip()]
+    keys = keys[1:] + [first_key]
+    result = get_keys(v, path, sorted(keys))
+    return result
+
+
+def make_strings(data):
+    h = []
+    d = []
+    for k in sorted(data):
+        h.append(str(k))
+        d.append(str(data[k]))
+    return [h, d]
+
+
+def make_template(data):
+    l = [None] * len(data[0])
+    for e in data:
+        for n,i in enumerate(l):
+            if len(e[n]) > l[n]:
+                l[n] = len(e[n])
+    tl = '|'
+    for i in l:
+        tl = tl + '{{:^{}}}'.format(i+2) + '|'
+    return tl
+
+
+def formated_print(data):
+    if not data:
+        print('No data to print')
+    if isinstance(data, dict):
+        result = make_strings(data)
+    else:
+        result = []
+        for e in data:
+            d = make_strings(e)
+            if result:
+                result.append(d[1])
+            else:
+                result = d
+    tl = make_template(result)
+    header = tl.format(*result[0])
+    print('-'*len(header))
+    print(header)
+    print('-'*len(header))
+    for e in result[1:]:
+        s = tl.format(*e)
+        print(s)
+    tl_total = '{} record.' if (len(result) - 1)  == 1 else '{} records.'
+    print('-'*len(header))
+    print(tl_total.format(len(result)-1), end='')
+
+
+def can_formating(data):
+    if not data:
+        return False
+    if isinstance(data, dict):
+        for k,v in data.items():
+            if isinstance(v, (list, dict)):
+                return False
+    elif isinstance(data, list):
+        v_len = len(data[0])
+        for v in data:
+            if isinstance(v, list):
+                return False
+            elif isinstance(v,dict) and not can_formating(v):
+                return False
+            elif isinstance(v, (int, long, basestring, float)):
+                return False
+            elif v_len != len(v):
+                return False
+    elif isinstance(data, (int, long, basestring, float)):
+        return False
+    return True
+
+
+def measure_duration(wrapped):
+    def _wrapped(*args, **kwargs):
+        start_time = time.time()
+        result = wrapped(*args, **kwargs)
+        duration = time.time() - start_time
+        print(' Took {0:.4f} seconds'.format(duration))
+        return result
+    return _wrapped
+
+
+class Shell(Cmd):
+
+    def __init__(self):
+        self.user = os.getenv('YETI_CMD_USER', 'anonymous')
+        self.prompt = self.user+' YETI> '
+        self.doc_header = ''
+        self.cfg = dict()
+        self.c_node = None
+        self.nodes = []
+        self.formatting = True
+        Cmd.__init__(self)
+
+    def sigint_handler(self, signum, frame):
+        self.stdout.write('\n'+self.prompt)
+        self.stdout.flush()
+
+    def rpc_do(self, args):
+        if self.c_node.get(u'id') is None:
+            return None
+        return JsonRpcProxy(self.c_node[u'rpc_uri']).call_remote('yeti.'+args[0],args[1:])
+
+    def rpc_complete(self, args):
+        try:
+            a = args[:]
+            a.append('_list')
+            return [c[0]+' ' for c in self.rpc_do(a)]
+        except BaseException as err:
+            return None
+
+    def rpc_command(self, line):
+        try:
+            syslog.syslog('{}: {}->{}'.format(self.ip, self.c_node.get(u'id'), line))
+            if self.c_node.get(u'id') is None:
+                raise BaseException("you should choose node first")
+            cc = [c.strip() for c in line.split('&')]
+            for c in cc:
+                args = c.split('|')
+                cmds = args[0].split()
+                keys = args[1].strip() if len(args) > 1 else None
+
+                if len(cc) > 1:
+                    print("{}...".format(args[0]))
+                data = self.rpc_do(cmds)
+                if keys:
+                    data = filter_data(data, keys)
+                else:
+                    if keys is not None:
+                        data = data[1]
+                return data
+        except BaseException as err:
+            print(err)
+
+    @measure_duration
+    def default(self, line):
+        result = self.rpc_command(line)
+        self.gprint(result)
+
+    def do_EOF(self, line):
+        print('\33[0m')
+        sys.exit()
+
+    @measure_duration
+    def do_all(self, line):
+        'apply rpc_cmd for all nodes from config'
+        tmp_node_id = self.c_node.get(u'id')
+        result = []
+        for i in (n.get(u'id') for n in self.nodes):
+            self.switch_to_node(i)
+            r = self.rpc_command(line)
+            if r is None:
+                print("There's no data from node {}".format(i))
+                continue
+            a_fields = {' node_id': self.c_node.get(u'id')}
+            if isinstance(r, dict):
+                r.update(a_fields)
+                result.append(r)
+            elif isinstance(r, list):
+                for e in r:
+                    e.update(a_fields)
+                    result.append(e)
+            else:
+                r = {'request_result': r}
+                r.update(a_fields)
+                result.append(r)
+        self.switch_to_node(tmp_node_id)
+        self.gprint(result)
+
+    def complete_all(self, text, line, begidx, endidx):
+        return self.completedefault(text, ' '.join(line.split()[1:]), begidx, endidx)
+
+    def completenames(self, text, *ignored):
+        dotext = 'do_'+text
+        r = [a[3:] for a in self.get_names() if a.startswith(dotext)]
+        if self.c_node.get(u'id') is None:
+            return r
+        return r+[a for a in self.rpc_complete([]) if a.startswith(text)]
+
+    def completedefault(self, text, line, begidx, endidx):
+        if self.c_node.get(u'id') is None:
+            return []
+        q = line.split()
+        if len(q) and q[0] in [a[3:] for a in self.get_names()]:
+            return []
+        c = self.rpc_complete(q)
+        if c is None:
+            p = self.rpc_complete(q[:-1])
+            c = [] if p is None else p
+        return [a for a in c if a.startswith(text)]
+
+    def emptyline(self):
+        pass
+
+    def do_exit(self, arg):
+        'exit shell'
+        syslog.syslog('{}: Session disconnected'.format(self.ip))
+        print('\33[0m',end='')
+        sys.exit()
+
+    def do_list(self, arg):
+        'list available nodes'
+        header = "node_id  rpc_uri"
+        print(header)
+        print('-'*len(header))
+        for n in self.nodes:
+            print('{0:^7}  {1}'.format(n.get(u'id'), n.get(u'rpc_uri')))
+
+    def use_node(self,node_id):
+        if not node_id:
+            raise BaseException('cmd requires node_id')
+        if int(node_id) not in (n.get(u'id') for n in self.nodes):
+            raise BaseException('invalid node id. use list to see available')
+        prev_node_id = self.c_node.get(u'id') if self.c_node else 'empty'
+        self.switch_to_node(int(node_id))
+        tp_promt = "\001\x1b[31m\002{0}@{1}:{2}> \001\x1b[32m\002"
+        self.prompt = tp_promt.format(
+            self.user,
+            self.cfg.get('prompt_system_name'),
+            self.c_node.get(u'id'),
+        )
+        print("node changed from {} to {}".format(prev_node_id, self.c_node.get(u'id')))
+
+    def do_use(self, arg):
+        'use <node_id> - set current node'
+        try:
+            self.use_node(arg)
+        except BaseException as err:
+            print(err)
+        pass
+
+    def do_formating(self, arg):
+        "formating [enable|disable]"
+        if not arg:
+            print(self.formatting)
+        elif len(arg.split()) == 1 and arg in ['enable', 'disable']:
+            print("{0} formating".format(arg))
+            self.formatting = True if arg == 'enable' else False
+
+    def complete_formating(self, text, line, begidx, endidx):
+        if len(line.split()) > 2:
+            print("\n You can apply only enable|disable args\n")
+            return []
+        return [a for a in ['enable', 'disable'] if a.startswith(text)]
+
+    def read_cfg(self):
+        self.cfg = get_config(CFG_PATH)
+
+    def load_nodes(self):
+        try:
+            ans = requests.get(
+                self.cfg.get('nodes_url'),
+                timeout=self.cfg.get(u'timeout'),
+            )
+            self.nodes = ans.json()
+            syslog.syslog('{}'.format(self.nodes))
+            # quick hack to remove http:// scheme from uri
+            # we have to use separate field for json rpc endpoint
+            for node in self.nodes:
+                node['rpc_uri'] = urlparse(node['rpc_uri']).netloc
+
+            if not isinstance(self.nodes, list):
+                raise TypeError("Can't get node list from {}".format(self.cfg.get('nodes_url')))
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, TypeError) as err:
+            print(err)
+            sys.exit(-1)
+
+    def switch_to_node(self, arg):
+        for n in self.nodes:
+            if n[u'id'] == arg:
+                self.c_node = n
+                break
+        else:
+            raise BaseException("can't switch to node {}".format(arg))
+
+    def preloop(self):
+        self.read_cfg()
+        self.load_nodes()
+        socket.setdefaulttimeout(self.cfg[u'timeout'])
+
+        if 'default_node' in self.cfg:
+            default_node = str(self.cfg['default_node'])
+            try:
+                self.use_node(default_node)
+            except BaseException as e:
+                print("switch to default node '{}' failed with error: {}".format(default_node,e))
+                if self.nodes:
+                    print("failover to the first node from list")
+                    self.do_use(str(self.nodes[0].get(u'id')))
+        else:
+            print("no default node configured")
+            if self.nodes:
+                print("use the first node from list")
+                self.do_use(str(self.nodes[0].get(u'id')))
+
+        signal.signal(signal.SIGINT, self.sigint_handler)
+        self.ip = os.getenv('SSH_CLIENT', 'Local')
+
+    def gprint(self, data):
+        print('\33[0m',end='')
+        if self.formatting and can_formating(data):
+            formated_print(data)
+        else:
+            pprint.PrettyPrinter(indent=4).pprint(data)
+
+
+if __name__ == '__main__':
+    try:
+        syslog.syslog("Session started")
+        print('YETI-CLI version {}'.format(__version__))
+        Shell().cmdloop()
+    except IOError as e:
+        print(e)
+    except KeyboardInterrupt as e:
+        print('')
