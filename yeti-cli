@@ -10,6 +10,7 @@ import syslog
 import socket
 import time
 import json
+import traceback
 import yaml
 import requests
 
@@ -24,8 +25,7 @@ class ConnectionLost(Exception): pass
 class JsonRpcError(Exception): pass
 
 class JsonRpcProxy: # https://pypi.python.org/pypi/JsonRpc-Netstrings/0.2-dev
-    retries = 0
-    def __init__(self, addr, timeout = 60, version="2.0"):
+    def __init__(self, addr, timeout = 5, version="2.0"):
         if addr.find(':'):
             (self.host,self.port) = addr.split(':')
             self.port = int(self.port)
@@ -37,27 +37,15 @@ class JsonRpcProxy: # https://pypi.python.org/pypi/JsonRpc-Netstrings/0.2-dev
         self.connect()
 
     def connect(self):
-        try:
-            self.retries += 1
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(self._timeout)
-            self.socket.connect((self.host, self.port))
-            self._incrementor = 1
-            self.retries = 0
-        except Exception as e:
-            syslog.syslog("%s" % e)
-            sleep_time = math.log(self.retries)
-            syslog.syslog("Couldn't Connect, sleeping for {} seconds and retrying... (retry #{})".format(sleep_time, self.retries))
-            time.sleep(sleep_time)
-            return self.connect()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.settimeout(self._timeout)
+        self.socket.connect((self.host, self.port))
+        self._incrementor = 1
 
     def close(self):
         self.socket.close()
 
     def call_remote(self, method, params={}, retries=0):
-        if retries > 10:
-            raise JsonRpcError('Too many retries: {}'.format(retries))
-
         self._incrementor += 1
         jsonrpc_request = {"jsonrpc": self._version, "id": self._incrementor, "method": method, "params": params}
         string = json.dumps(jsonrpc_request)
@@ -88,17 +76,12 @@ class JsonRpcProxy: # https://pypi.python.org/pypi/JsonRpc-Netstrings/0.2-dev
         #     self.connect()
         #     return self.call_remote(method, params)
         except Exception, e:
-            # Get the traceback
             traceback_string = traceback.format_exc()
-            syslog.syslog('%s'.format(traceback_string))
-            # Error. Reconnect and try again. 
-            # TODO: This should have a max retries.
-            self.connect()
-            return self.call_remote(method, params)
+            syslog.syslog('{}'.format(traceback_string))
+            raise e
 
         if not response['id'] == self._incrementor:
-            return self.call_remote(method, params, retries)
-            # raise JsonRpcError('Bad sequence ID (%s, expected %s)' % (response['id'], self._incrementor))
+            raise JsonRpcError('Bad sequence ID ({}, expected {})'.format(response['id'], self._incrementor))
 
         last_char = self.socket.recv(1)
 
@@ -261,9 +244,13 @@ class Shell(Cmd):
         addr = self.c_node['rpc_addr']
         rpc_type = self.c_node['rpc_type']
         if rpc_type is self.RpcType.xml:
-            return xmlrpclib.ServerProxy(addr).di('yeti', *args)
+            s = xmlrpclib.ServerProxy(addr)
+            data = s.di('yeti', *args)
+            return data
         elif rpc_type is self.RpcType.json:
-            return JsonRpcProxy(addr).call_remote('yeti.'+args[0],args[1:])
+            j = JsonRpcProxy(addr,self._timeout)
+            data = j.call_remote('yeti.'+args[0],args[1:])
+            return data
         else:
             raise BaseException("unknown rpc type for node {}".format(self.c_node.get(u'id')))
 
@@ -412,16 +399,18 @@ class Shell(Cmd):
 
     def read_cfg(self):
         self.cfg = get_config(CFG_PATH)
+        self._timeout = self.cfg.get(u'timeout')
+        self.nodes_url = self.cfg.get(u'nodes_url')
 
     def load_nodes(self):
         try:
             ans = requests.get(
-                self.cfg.get('nodes_url'),
-                timeout=self.cfg.get(u'timeout'),
+                self.nodes_url,
+                timeout=self._timeout,
             )
             self.nodes = ans.json()
             if not isinstance(self.nodes, list):
-                raise TypeError("Can't get node list from {}".format(self.cfg.get('nodes_url')))
+                raise TypeError("Can't get node list from {}".format(self.nodes_url))
             for node in self.nodes:
                 if self.JSON_RPC_KEY in node and node[self.JSON_RPC_KEY]:
                     node['rpc_type'] = self.RpcType.json
