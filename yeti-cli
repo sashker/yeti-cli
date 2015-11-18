@@ -9,15 +9,108 @@ import pprint
 import syslog
 import socket
 import time
-
+import json
 import yaml
 import requests
 
+from enum import Enum
 from cmd import Cmd
 
 __version__ = 'REPLACE-ME'
 
 CFG_PATH = '/etc/yeti/yeti-cli.yml'
+
+class ConnectionLost(Exception): pass
+class JsonRpcError(Exception): pass
+
+class JsonRpcProxy: # https://pypi.python.org/pypi/JsonRpc-Netstrings/0.2-dev
+    retries = 0
+    def __init__(self, addr, timeout = 60, version="2.0"):
+        if addr.find(':'):
+            (self.host,self.port) = addr.split(':')
+            self.port = int(self.port)
+        else:
+            self.host = addr
+            self.port = 7080
+        self._version = version
+        self._timeout = timeout
+        self.connect()
+
+    def connect(self):
+        try:
+            self.retries += 1
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(self._timeout)
+            self.socket.connect((self.host, self.port))
+            self._incrementor = 1
+            self.retries = 0
+        except Exception as e:
+            syslog.syslog("%s" % e)
+            sleep_time = math.log(self.retries)
+            syslog.syslog("Couldn't Connect, sleeping for {} seconds and retrying... (retry #{})".format(sleep_time, self.retries))
+            time.sleep(sleep_time)
+            return self.connect()
+
+    def close(self):
+        self.socket.close()
+
+    def call_remote(self, method, params={}, retries=0):
+        if retries > 10:
+            raise JsonRpcError('Too many retries: {}'.format(retries))
+
+        self._incrementor += 1
+        jsonrpc_request = {"jsonrpc": self._version, "id": self._incrementor, "method": method, "params": params}
+        string = json.dumps(jsonrpc_request)
+        jsonrpc = str(len(string)) + ":" + string + ","
+
+        try:
+            #print 'Sending message: %s' % jsonrpc
+            self.socket.send(jsonrpc)
+            byte_length = self.socket.recv(1, socket.MSG_WAITALL)
+
+            if not byte_length:
+                raise ConnectionLost()
+
+            while byte_length[-1] != ':':
+                #print 'Receiving byte length (next char)...'
+                byte_length += self.socket.recv(1)
+
+            byte_length = int(byte_length[:-1])
+
+            #print 'Got byte length:', byte_length
+
+            response_string = ''
+            while len(response_string) < byte_length:
+                #print 'Receiving bytedata bytes...'
+                response_string += str(self.socket.recv(byte_length-len(response_string)))
+            response = json.loads(response_string)
+        # except ConnectionLost:
+        #     self.connect()
+        #     return self.call_remote(method, params)
+        except Exception, e:
+            # Get the traceback
+            traceback_string = traceback.format_exc()
+            syslog.syslog('%s'.format(traceback_string))
+            # Error. Reconnect and try again. 
+            # TODO: This should have a max retries.
+            self.connect()
+            return self.call_remote(method, params)
+
+        if not response['id'] == self._incrementor:
+            return self.call_remote(method, params, retries)
+            # raise JsonRpcError('Bad sequence ID (%s, expected %s)' % (response['id'], self._incrementor))
+
+        last_char = self.socket.recv(1)
+
+        if last_char != ',':
+            raise JsonRpcError("Expected a comma as a jsonrpc terminator!")
+
+        if 'result' in response:
+            return response['result']
+        elif 'error' in response:
+            raise JsonRpcError(response['error'])
+        else:
+            raise JsonRpcError('Unknow error. Response: {}'.format(response))
 
 def get_config(path):
     path = os.getenv('YETI_CMD_CFG_PATH', path)
@@ -141,6 +234,12 @@ def measure_duration(wrapped):
 
 
 class Shell(Cmd):
+    JSON_RPC_KEY = 'rpc_endpoint'
+    XML_RPC_KEY = 'rpc_uri'
+
+    class RpcType(Enum):
+        xml = 1
+        json = 2
 
     def __init__(self):
         self.user = os.getenv('YETI_CMD_USER', 'anonymous')
@@ -159,10 +258,14 @@ class Shell(Cmd):
     def rpc_do(self, args):
         if self.c_node.get(u'id') is None:
             return None
-        addr = self.c_node[u'rpc_uri']
-        s = xmlrpclib.ServerProxy(addr)
-        data = s.di('yeti', *args)
-        return data
+        addr = self.c_node['rpc_addr']
+        rpc_type = self.c_node['rpc_type']
+        if rpc_type is self.RpcType.xml:
+            return xmlrpclib.ServerProxy(addr).di('yeti', *args)
+        elif rpc_type is self.RpcType.json:
+            return JsonRpcProxy(addr).call_remote('yeti.'+args[0],args[1:])
+        else:
+            raise BaseException("unknown rpc type for node {}".format(self.c_node.get(u'id')))
 
     def rpc_complete(self, args):
         try:
@@ -263,11 +366,12 @@ class Shell(Cmd):
 
     def do_list(self, arg):
         'list available nodes'
-        header = "node_id  rpc_uri"
+        header = "node_id  endpoint"
         print(header)
         print('-'*len(header))
         for n in self.nodes:
-            print('{0:^7}  {1}'.format(n.get(u'id'), n.get(u'rpc_uri')))
+            print('{0:^7}  {1}: {2}'.format(n.get(u'id'), n.get(u'rpc_type').name, n.get(u'rpc_addr')))
+
 
     def use_node(self,node_id):
         if not node_id:
@@ -315,9 +419,16 @@ class Shell(Cmd):
                 self.cfg.get('nodes_url'),
                 timeout=self.cfg.get(u'timeout'),
             )
-            self.nodes = ans.json
+            self.nodes = ans.json()
             if not isinstance(self.nodes, list):
                 raise TypeError("Can't get node list from {}".format(self.cfg.get('nodes_url')))
+            for node in self.nodes:
+                if self.JSON_RPC_KEY in node and node[self.JSON_RPC_KEY]:
+                    node['rpc_type'] = self.RpcType.json
+                    node['rpc_addr'] = node[self.JSON_RPC_KEY]
+                else:
+                    node['rpc_type'] = self.RpcType.xml
+                    node['rpc_addr'] = node[self.XML_RPC_KEY]
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, TypeError) as err:
             print(err)
             sys.exit(-1)
