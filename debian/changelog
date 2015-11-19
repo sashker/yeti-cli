@@ -1,3 +1,9 @@
+yeti-cli (1.4.2) wheezy; urgency=low
+
+  * Version bump.
+
+ -- root <root@yeti-build>  Thu, 19 Nov 2015 13:25:57 +0200
+
 yeti-cli (0.1.4-1) wheezy; urgency=low
 
     * fix compatibility issues
