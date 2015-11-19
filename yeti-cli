@@ -357,7 +357,7 @@ class Shell(Cmd):
         print(header)
         print('-'*len(header))
         for n in self.nodes:
-            print('{0:^7}  {1}: {2}'.format(n.get(u'id'), n.get(u'rpc_type').name, n.get(u'rpc_addr')))
+            print('{0:^7}  {1}: {2}'.format(n.get(u'id'), n.get(u'rpc_type'), n.get(u'rpc_addr')))
 
 
     def use_node(self,node_id):
@@ -408,7 +408,9 @@ class Shell(Cmd):
                 self.nodes_url,
                 timeout=self._timeout,
             )
-            self.nodes = ans.json()
+            self.nodes = ans.json
+            if hasattr(self.nodes, '__call__'):
+                self.nodes = self.nodes()
             if not isinstance(self.nodes, list):
                 raise TypeError("Can't get node list from {}".format(self.nodes_url))
             for node in self.nodes:
