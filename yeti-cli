@@ -21,6 +21,17 @@ __version__ = 'REPLACE-ME'
 
 CFG_PATH = '/etc/yeti/yeti-cli.yml'
 
+def byteify(input):
+    if isinstance(input, dict):
+        return {byteify(key): byteify(value)
+                for key, value in input.iteritems()}
+    elif isinstance(input, list):
+        return [byteify(element) for element in input]
+    elif isinstance(input, unicode):
+        return input.encode('utf-8')
+    else:
+        return input
+
 class ConnectionLost(Exception): pass
 class JsonRpcError(Exception): pass
 
@@ -460,7 +471,7 @@ class Shell(Cmd):
         if self.formatting and can_formating(data):
             formated_print(data)
         else:
-            pprint.PrettyPrinter(indent=4).pprint(data)
+            pprint.PrettyPrinter(indent=4).pprint(byteify(data))
 
 
 if __name__ == '__main__':
