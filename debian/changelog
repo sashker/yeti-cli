@@ -1,3 +1,9 @@
+yeti-cli (1.4.3) wheezy; urgency=low
+
+  * encode unicode strings before unformatted output
+
+ -- root <root@localhost>  Fri, 29 Jan 2016 13:18:04 +0200
+
 yeti-cli (1.4.2) wheezy; urgency=low
 
   * Version bump.
